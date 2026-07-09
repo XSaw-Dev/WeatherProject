@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌤️ Weather Explorer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0a0a0c; color: #fff; min-height: 100vh; padding: 30px 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { text-align: center; font-size: 2.5rem; margin-bottom: 5px; background: linear-gradient(135deg, #00e5ff, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 10px; font-size: 0.9rem; }
+        .last-update { text-align: center; color: #666; font-size: 0.8rem; margin-bottom: 25px; }
+        
+        .tabs { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 25px; }
+        .tab-btn { padding: 10px 22px; border: 2px solid #333; border-radius: 30px; background: transparent; color: #aaa; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: 0.3s ease; }
+        .tab-btn:hover { border-color: #00e5ff; color: #fff; }
+        .tab-btn.active { background: #00e5ff; color: #000; border-color: #00e5ff; box-shadow: 0 0 20px rgba(0, 229, 255, 0.3); }
+
+        .tab-content { display: none; animation: fadeIn 0.4s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .city-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; }
+        .city-card { background: rgba(255, 255, 255, 0.05); border: 1px solid #222; border-radius: 16px; padding: 18px; backdrop-filter: blur(10px); transition: 0.3s ease; text-align: center; }
+        .city-card:hover { transform: translateY(-5px); border-color: #00e5ff; box-shadow: 0 10px 30px rgba(0, 229, 255, 0.1); }
+        .city-card .city-name { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+        .city-card .country-name { font-size: 0.75rem; color: #888; margin-bottom: 10px; }
+        .city-card .temp { font-size: 2rem; font-weight: 800; color: #00e5ff; }
+        .city-card .desc { font-size: 0.85rem; color: #ccc; margin-top: 4px; }
+        .city-card .extra { display: flex; justify-content: space-between; margin-top: 10px; font-size: 0.75rem; color: #aaa; border-top: 1px solid #222; padding-top: 8px; }
+        .city-card .update-time { font-size: 0.6rem; color: #555; margin-top: 6px; }
+        .loading { text-align: center; padding: 40px; color: #888; }
+        .loading i { font-size: 2rem; margin-bottom: 10px; display: block; color: #00e5ff; }
+
+        @media (max-width: 600px) {
+            .tab-btn { padding: 6px 14px; font-size: 0.75rem; }
+            .city-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 1.8rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🌤️ Weather Explorer</h1>
+        <p class="subtitle">Data cuaca diperbarui otomatis setiap 2 menit</p>
+        <p class="last-update" id="lastUpdate">⏳ Memuat data...</p>
+
+        <div class="tabs" id="tabContainer"></div>
+        <div id="contentContainer"></div>
+    </div>
+
+    <script>
+        let countries = [];
+        let weatherData = {};
+
+        async function fetchCountries() {
+            const res = await fetch('/api/countries');
+            const data = await res.json();
+            if (data.success) countries = data.data;
+        }
+
+        async function fetchWeather() {
+            const res = await fetch('/api/weather');
+            const data = await res.json();
+            if (data.success) weatherData = data.data;
+        }
+
+        function renderTabs() {
+            const container = document.getElementById('tabContainer');
+            container.innerHTML = countries.map((c, idx) => `
+                <button class="tab-btn ${idx === 0 ? 'active' : ''}" data-index="${idx}">
+                    ${c.name}
+                </button>
+            `).join('');
+
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    const index = parseInt(this.dataset.index);
+                    renderCountry(index);
+                });
+            });
+        }
+
+        function renderCountry(index) {
+            const country = countries[index];
+            const container = document.getElementById('contentContainer');
+
+            if (!country) {
+                container.innerHTML = '<div class="loading">❌ Negara tidak ditemukan</div>';
+                return;
+            }
+
+            const countryWeather = {};
+            for (const key in weatherData) {
+                if (weatherData[key].country === country.name) {
+                    countryWeather[key] = weatherData[key];
+                }
+            }
+
+            const cities = country.cities || [];
+            let html = `<div class="city-grid">`;
+            let found = 0;
+
+            for (const city of cities) {
+                const key = `${city},${country.name}`;
+                const data = countryWeather[key];
+                if (data) {
+                    found++;
+                    const iconUrl = data.icon ? `https://openweathermap.org/img/wn/${data.icon}@2x.png` : '';
+                    html += `
+                        <div class="city-card">
+                            <div class="city-name">${data.city}</div>
+                            <div class="country-name">${data.country}</div>
+                            ${iconUrl ? `<img src="${iconUrl}" alt="icon" style="width:50px;height:50px;margin:0 auto;">` : ''}
+                            <div class="temp">${Math.round(data.temp)}°C</div>
+                            <div class="desc">${data.description || '-'}</div>
+                            <div class="extra">
+                                <span>🌡️ ${Math.round(data.feels_like)}°C</span>
+                                <span>💧 ${data.humidity}%</span>
+                            </div>
+                            <div class="update-time">🔄 ${new Date(data.updated_at).toLocaleString('id-ID')}</div>
+                        </div>
+                    `;
+                }
+            }
+
+            html += `</div>`;
+
+            if (found === 0) {
+                html = `<div class="loading">⏳ Belum ada data cuaca untuk ${country.name}. Tunggu update berikutnya.</div>`;
+            }
+
+            container.innerHTML = html;
+            updateLastUpdate();
+        }
+
+        function updateLastUpdate() {
+            const el = document.getElementById('lastUpdate');
+            const now = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            el.textContent = `📅 Terakhir diperbarui: ${now}`;
+        }
+
+        async function init() {
+            await fetchCountries();
+            await fetchWeather();
+            renderTabs();
+            if (countries.length > 0) renderCountry(0);
+        }
+
+        async function refreshData() {
+            await fetchWeather();
+            const activeTab = document.querySelector('.tab-btn.active');
+            if (activeTab) {
+                const index = parseInt(activeTab.dataset.index);
+                renderCountry(index);
+            }
+        }
+
+        setInterval(refreshData, 120000);
+        init();
+    </script>
+
+</body>
+</html>
